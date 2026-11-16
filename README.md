@@ -2,6 +2,8 @@
 
 A system tray battery monitor for the **Dark Project ALU104A Onionite V2 Wireless** keyboard, written in Python with PyQt6. A companion to [HyperTray](https://github.com/rafal-p4wlowski/HyperTray) (HyperX headset).
 
+[![Latest Release](https://img.shields.io/github/v/release/rafal-p4wlowski/OnionTray?label=Download%20.exe)](https://github.com/rafal-p4wlowski/OnionTray/releases/latest)
+
 ## Features
 
 - **Battery in the tray:** the battery level is drawn as digits in the tray icon (green / amber / red), refreshed every 10 s to 10 min (default 1 min).
