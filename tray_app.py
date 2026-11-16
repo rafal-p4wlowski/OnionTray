@@ -1,18 +1,19 @@
 import logging
 import time
 
-from PyQt6.QtCore import QObject
+from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import app_settings
-from ui_components import DARK_MENU_STYLE, create_qicon, get_battery_color
+from ui_components import DARK_MENU_STYLE, create_tray_icon, taskbar_is_light
 from version import __version__
 from worker import INITIAL_STATE, KeyboardWorker
 
 log = logging.getLogger("oniontray")
 
 LOW_BATTERY_HYSTERESIS = 5   # warn again only after the level rose this much above the threshold
+THEME_CHECK_MS = 2000        # how often to check whether the taskbar switched light/dark
 
 
 def charging_state(state):
@@ -42,7 +43,7 @@ class KeyboardApp(QObject):
         self.worker.state_changed.connect(self.sync_state)
 
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(create_qicon("...", get_battery_color(None)))
+        self._light_taskbar = taskbar_is_light()
         self.tray.setToolTip("Looking for keyboard...")
         self.tray.activated.connect(self.on_tray_activated)
         self.menu = self._build_menu()
@@ -50,6 +51,11 @@ class KeyboardApp(QObject):
         self.sync_state(self.state)
         self.tray.show()
         self.worker.start()
+
+        # The ring and glyph follow the taskbar colour, which can change at any time.
+        self.theme_timer = QTimer(self)
+        self.theme_timer.timeout.connect(self._check_taskbar_theme)
+        self.theme_timer.start(THEME_CHECK_MS)
 
     # --- menu construction ---
     @staticmethod
@@ -160,6 +166,7 @@ class KeyboardApp(QObject):
     def on_low_battery(self, level):
         self.settings.low_battery = level
         self._low_warned = False
+        self._update_icon()  # the arc turns amber/red relative to the threshold
         self._check_low_battery()
 
     def on_quit(self):
@@ -191,11 +198,21 @@ class KeyboardApp(QObject):
         self.last_seen_info.setText(f"Last reading: {format_last_seen(state['last_seen'])}")
         self.last_seen_info.setVisible(bat is not None and not state["awake"])
 
-        self.tray.setIcon(create_qicon(
-            str(bat) if bat is not None else "-", get_battery_color(bat, state["awake"]),
-            charging=charging == "Charging"))
+        self._update_icon()
         self._check_low_battery()
         self._refresh_tooltip(charging)
+
+    def _update_icon(self):
+        state = self.state
+        self.tray.setIcon(create_tray_icon(
+            state["battery"], charging=charging_state(state) == "Charging", active=state["awake"],
+            low=self.settings.low_battery, light_taskbar=self._light_taskbar))
+
+    def _check_taskbar_theme(self):
+        light = taskbar_is_light()
+        if light != self._light_taskbar:
+            self._light_taskbar = light
+            self._update_icon()
 
     def _check_low_battery(self):
         bat, threshold = self.state["battery"], self.settings.low_battery

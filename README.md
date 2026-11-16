@@ -6,11 +6,11 @@ A system tray battery monitor for the **Dark Project ALU104A Onionite V2 Wireles
 
 ## Features
 
-- **Battery in the tray:** the battery level is drawn as digits in the tray icon (green / amber / red), refreshed every 10 s to 10 min (default 1 min).
+- **Battery in the tray:** a ring around a keyboard glyph fills clockwise with the battery level. It follows the taskbar colour (white on dark, black on light) and turns amber 10 points above the low-battery threshold and red at it. The exact level is in the tooltip. Refreshed every 10 s to 10 min (default 1 min).
 - **2.4G receiver and USB cable:** read directly over HID from the receiver's vendor interface.
 - **Bluetooth:** when the receiver does not answer, the battery level Windows reports for the paired `ALU104 ...` Bluetooth device is used (can be turned off in Settings).
-- **Sleep aware:** while the keyboard sleeps the last reading stays in the tray in grey, with the time it was taken.
-- **Charging:** a lightning bolt while the keyboard charges over the USB cable.
+- **Sleep aware:** while the keyboard sleeps the icon is dimmed, and the tooltip keeps the last reading with the time it was taken.
+- **Charging:** the ring turns green while the keyboard charges over the USB cable.
 - **Low battery warning:** a Windows notification at 10 / 15 / 20 / 30% (configurable or off).
 - **Left click** refreshes immediately. **Start with Windows** from the Settings submenu. Only one instance runs at a time.
 
@@ -53,6 +53,11 @@ Tests run against a simulated receiver (`tests/fake_hid.py`), no keyboard needed
 ## Releasing
 
 Update `__version__` in `version.py`, then `git tag v1.0.0 && git push origin main --tags`. GitHub Actions builds `OnionTray.exe` and publishes a release.
+
+## Credits
+
+- Tray icon presentation (battery ring around a device glyph) after [HaloBattery](https://github.com/HeyOkay/HaloBattery) by HeyOkay (MIT).
+- Keyboard glyph from [Lucide](https://lucide.dev/) 1.17.0 (ISC, includes Feather's MIT notice), redrawn as Qt paths. License text: [licenses/lucide-1.17.0-LICENSE.txt](licenses/lucide-1.17.0-LICENSE.txt).
 
 ## License
 
