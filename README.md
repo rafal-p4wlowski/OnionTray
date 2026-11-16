@@ -12,6 +12,12 @@ A system tray battery monitor for the **Dark Project ALU104A Onionite V2 Wireles
 - **Low battery warning:** a Windows notification at 10 / 15 / 20 / 30% (configurable or off).
 - **Left click** refreshes immediately. **Start with Windows** from the Settings submenu. Only one instance runs at a time.
 
+## Screenshots
+
+| Tray Hover (Battery Level) | Context Menu |
+| :---: | :---: |
+| ![Tray Hover](1.png) | ![Context Menu](2.png) |
+
 ## Usage
 
 ```bash
