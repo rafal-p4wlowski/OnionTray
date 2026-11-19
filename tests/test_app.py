@@ -113,3 +113,8 @@ def test_settings_menus(app):
 def test_quit_stops_worker(app):
     app.on_quit()
     assert not app.worker.isRunning()
+
+
+def test_release_unused_memory_is_safe(qapp):
+    import tray_app
+    tray_app.release_unused_memory()

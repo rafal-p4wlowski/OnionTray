@@ -180,6 +180,7 @@ PL = {
     "Clear": "Wyczyść",
     "Save macros to keyboard": "Zapisz makra w klawiaturze",
     "Unsaved changes": "Niezapisane zmiany",
+    "Save the macro changes to the keyboard before closing?": "Zapisać zmiany makr w klawiaturze przed zamknięciem?",
     "Macro {}": "Makro {}",
     "Press": "Klawisz wciśnięty",
     "Release": "Klawisz zwolniony",

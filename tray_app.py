@@ -1,4 +1,6 @@
+import ctypes
 import logging
+import sys
 import time
 
 from PyQt6.QtCore import QObject, QTimer
@@ -14,6 +16,7 @@ from worker import INITIAL_STATE, KeyboardWorker
 
 log = logging.getLogger("oniontray")
 
+TRIM_DELAY_MS = 5000          # after the start and after the panel was closed
 LOW_BATTERY_HYSTERESIS = 5   # warn again only after the level rose this much above the threshold
 THEME_CHECK_MS = 2000        # how often to check whether the taskbar switched light/dark
 
@@ -26,6 +29,16 @@ def charging_state(state):
     if state["mode"] != "USB cable":
         return "Not charging"
     return "Fully charged" if state["battery"] >= 100 else "Charging"
+
+
+def release_unused_memory():
+    """Hand the pages not used lately back to Windows. A tray app sits idle
+    almost all the time; the pages come back cheaply when they are needed."""
+    if sys.platform == "win32":
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.K32EmptyWorkingSet.argtypes = [ctypes.c_void_p]
+        k32.K32EmptyWorkingSet(k32.GetCurrentProcess())
 
 
 def format_last_seen(timestamp):
@@ -55,6 +68,7 @@ class KeyboardApp(QObject):
         self.sync_state(self.state)
         self.tray.show()
         self.worker.start()
+        QTimer.singleShot(TRIM_DELAY_MS, release_unused_memory)
 
         # The ring and glyph follow the taskbar colour, which can change at any time.
         self.theme_timer = QTimer(self)
@@ -164,7 +178,14 @@ class KeyboardApp(QObject):
 
     def _new_panel(self):
         from panel import KeyboardPanel     # loaded on first use, keeps the start light
-        return KeyboardPanel(self)
+        panel = KeyboardPanel(self)
+        panel.closed.connect(lambda: self._panel_closed(panel))
+        return panel
+
+    def _panel_closed(self, panel):
+        if self.panel is panel:
+            self.panel = None
+            QTimer.singleShot(TRIM_DELAY_MS, release_unused_memory)
 
     def show_panel(self):
         if self.panel is None:
@@ -231,9 +252,8 @@ class KeyboardApp(QObject):
         self._sync_panel_settings()
 
     def on_quit(self):
-        if self.panel is not None:
-            self.panel.shutdown()
-            self.panel.close()
+        if self.panel is not None and not self.panel.close():
+            return                          # the user kept the panel open (unsaved macros)
         self.worker.stop()
         if not self.worker.wait(5000):
             log.warning("Worker did not stop in time")

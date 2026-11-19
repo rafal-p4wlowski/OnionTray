@@ -104,9 +104,12 @@ class DeviceBridge(QObject):
             callback(result, error)
 
     def shutdown(self):
-        """Finish the queued writes, then stop the thread."""
-        self._jobs.put(None)
-        self._thread.join(timeout=30)
+        """Finish the queued writes, then stop the thread. Answers still on
+        their way are dropped: the window they belong to is going away."""
+        if self._thread.is_alive():
+            self._jobs.put(None)
+            self._thread.join(timeout=30)
+            self.finished.disconnect()
 
 
 # ------------------------------------------------------------- keyboard view
@@ -282,6 +285,10 @@ SCANCODE_TO_HID.update({0x3B + i: 58 + i for i in range(10)})                   
 # ------------------------------------------------------------------- panel
 
 class KeyboardPanel(QWidget):
+    """Freed when closed (about 40 MB); the tray app creates a new one on demand."""
+
+    closed = pyqtSignal()
+
     def __init__(self, app):
         super().__init__(None, Qt.WindowType.Window)
         self.app = app                       # KeyboardApp (battery state, app settings)
@@ -341,8 +348,19 @@ class KeyboardPanel(QWidget):
 
     def closeEvent(self, event):
         self._stop_recording()
-        self._flush_pending()
+        if self._macros_dirty and self.config is not None:
+            answer = QMessageBox.question(
+                self, tr("Macros"), tr("Save the macro changes to the keyboard before closing?"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+            if answer == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if answer == QMessageBox.StandardButton.Yes:
+                self._save_macros()
+        self.shutdown()
         event.accept()
+        self.closed.emit()
+        self.deleteLater()
 
     def shutdown(self):
         self._flush_pending()

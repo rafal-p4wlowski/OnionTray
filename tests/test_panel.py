@@ -226,3 +226,29 @@ def test_asleep_keyboard_shows_error(app, receiver):
     app.panel.reload()
     assert wait_until(lambda: app.panel.config is not None, timeout=10)
     assert app.panel.tabs.widget(0).isEnabled()
+
+
+def test_closing_frees_the_panel(app, panel):
+    panel.close()
+    assert wait_until(lambda: app.panel is None)
+    app.show_panel()                                        # a new panel reads the keyboard again
+    assert app.panel is not panel
+    assert wait_until(lambda: app.panel.config is not None)
+
+
+def test_close_with_unsaved_macros_saves_them(app, panel, receiver, no_modal_dialogs):
+    panel._new_macro(name="Late")
+    panel._add_manual_action()
+    panel.close()                                           # the dialog answers Yes = save
+    assert no_modal_dialogs
+    assert app.panel is None or wait_until(lambda: app.panel is None)
+    assert receiver.memory[0x15][0:4] == [144, 1, 0, 0]
+
+
+def test_cancel_keeps_the_panel_and_the_app(app, panel, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Cancel)
+    panel._new_macro(name="Keep")
+    app.on_quit()
+    assert app.panel is panel and panel.isVisible() and app.worker.isRunning()
+    panel._macros_dirty = False                             # let the fixture quit
