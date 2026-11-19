@@ -12,13 +12,24 @@ A system tray battery monitor for the **Dark Project ALU104A Onionite V2 Wireles
 - **Sleep aware:** while the keyboard sleeps the icon is dimmed, and the tooltip keeps the last reading with the time it was taken.
 - **Charging:** the ring turns green while the keyboard charges over the USB cable.
 - **Low battery warning:** a Windows notification at 10 / 15 / 20 / 30% (configurable or off).
-- **Left click** refreshes immediately. **Start with Windows** from the Settings submenu. Only one instance runs at a time.
+- **Keyboard panel:** a left click on the tray icon (or **Keyboard panel...** in the menu) opens a window with everything the vendor web driver ([app.darkproject.eu](https://app.darkproject.eu/)) offers, without a browser:
+  - **Keys:** remap any key on the normal and the Fn layer (letters, modifiers, numpad, F13-F24 for app shortcuts such as Discord mute, mouse buttons, media keys, keyboard functions such as Lock Win or Bluetooth channels, macros); restore one key or a whole layer to the factory state.
+  - **Lighting:** on/off, 19 effects, single colour or RGB, brightness, speed, direction, and per-key colours (Custom).
+  - **Macros:** record from the keyboard (real, zero or fixed delays) or add actions by hand, edit delays, reorder, save up to 100 macros; assign them to keys (play once, repeat N times, press again to stop).
+  - **SOCD:** key pairs (e.g. A/D) with last-input / key 1 / key 2 / neutral priority.
+  - **Settings:** sleep time (1-30 min or off), key response time (level 1-5), factory reset, and the OnionTray options.
+- **Languages:** English and Polish (Polski); follows the Windows language by default, switchable in the panel or the Settings > Language submenu. Polish names of effects and functions match the Polish version of the vendor driver.
+- **Start with Windows** from the panel or the Settings submenu. Only one instance runs at a time.
 
 ## Screenshots
 
 | Tray Hover (Battery Level) | Context Menu |
 | :---: | :---: |
 | ![Tray Hover](1.png) | ![Context Menu](2.png) |
+
+**Keyboard panel** (left click on the tray icon):
+
+![Keyboard panel](3.png)
 
 ## Usage
 
@@ -33,6 +44,8 @@ A log is written to `%APPDATA%\OnionTray\oniontray.log`. Set `ONIONTRAY_DEBUG=1`
 ## Protocol
 
 The receiver (VID `0C45`, PID `FEFE`) exposes a vendor HID interface on usage page `FF60`. After two init packets (`AA 00 ...`, `AA 01 ...`), the status packet `AA 10 18 00 00 00 01` is answered with `55 10 ...`, where byte 24 is the connection mode (0/1 USB cable, 2 receiver, 3 Bluetooth) and byte 25 the battery level. A level of 0 means the keyboard is asleep. The device is opened only for each poll, so the vendor software can still use it.
+
+Configuration uses the same packets as the web driver: `AA cmd len addrLo addrHi 00 last 00` followed by up to 24 data bytes, answered by `55 cmd ...`. Blocks longer than one packet go in 24-byte chunks. GET commands are `0x11` settings (56 B: byte 3 sleep minutes, byte 4 key response level), `0x12` / `0x16` normal / Fn key tables (128 slots x 4 B), `0x13` lighting (16 B: mode, RGB, colour mode, brightness, speed, direction), `0x14` per-key colours, `0x15` macros (100 pointers, then the bodies). Each SET is the GET command + `0x10`. `AA 0F FF` is a factory reset. See [keyboard_config.py](keyboard_config.py).
 
 ## Executable
 

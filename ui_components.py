@@ -11,7 +11,7 @@ from its 24x24 SVG path so no SVG module has to be bundled.
 """
 import sys
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
 ICON_SIZES = (16, 20, 24, 32, 40, 48, 64)   # tray sizes from 100% to 400% scaling

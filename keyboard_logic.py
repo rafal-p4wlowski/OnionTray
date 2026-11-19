@@ -11,9 +11,11 @@ initialisation packets the status packet (0xAA 0x10 0x18 ...) returns:
 In Bluetooth mode the receiver is not used; Windows then reports the battery
 level of the paired "ALU104 ..." device (see read_bluetooth_battery).
 """
+import contextlib
 import logging
 import subprocess
 import sys
+import threading
 import time
 
 import hid
@@ -136,6 +138,11 @@ def find_interfaces():
 
 
 def _query_path(path):
+    with IO_LOCK:
+        return _query_path_locked(path)
+
+
+def _query_path_locked(path):
     t = _Transport(path)
     try:
         t.drain()
@@ -175,6 +182,104 @@ def read_hid_status():
         if status:
             return True, status
     return bool(paths), None
+
+
+# --- configuration session (settings panel) ---
+#
+# Packet layout used by the vendor web driver (app.darkproject.eu):
+#   0 0xAA | 1 cmd | 2 length | 3-4 address LE | 5 0 | 6 last-packet flag | 7 0 | 8.. data
+# Answers carry 0x55 in byte 0 and the same command; their data starts at byte 8.
+# Blocks longer than one packet are sent/read in 24-byte chunks, the address
+# advancing by 24 and the last flag set on the final chunk only.
+
+IO_LOCK = threading.RLock()     # one conversation with the device at a time
+HEADER_SIZE = 8
+CHUNK_SIZE = PACKET_SIZE - HEADER_SIZE
+REQUEST_TIMEOUT = 0.6
+REQUEST_ATTEMPTS = 3
+
+
+class Session:
+    """An open vendor interface for a series of configuration commands.
+    Use open_session(); every call must run while IO_LOCK is held."""
+
+    def __init__(self, transport):
+        self.t = transport
+
+    def request(self, cmd, length=0, addr=0, data=None, last=True, timeout=REQUEST_TIMEOUT):
+        """Send one packet and return the answer's data bytes (24 of them)."""
+        payload = [0xAA, cmd, length, addr & 0xFF, (addr >> 8) & 0xFF, 0, int(bool(last)), 0]
+        payload += list(data or [])[:CHUNK_SIZE]
+        error = None
+        for _ in range(REQUEST_ATTEMPTS):
+            self.t.drain()
+            self.t.write(_packet(payload))
+            end = time.monotonic() + timeout
+            while time.monotonic() < end:
+                report = self.t.read(READ_POLL_MS)
+                if report and len(report) >= HEADER_SIZE and report[0] == ANSWER_MARKER and report[1] == cmd:
+                    log.debug("Answer %02X: %s", cmd, " ".join(f"{x:02X}" for x in report))
+                    return report[HEADER_SIZE:PACKET_SIZE]
+            error = f"no answer to command 0x{cmd:02X} (addr {addr})"
+        raise KeyboardError(error)
+
+    def read_block(self, cmd, size, addr=0):
+        out = []
+        offset = 0
+        while offset < size:
+            n = min(CHUNK_SIZE, size - offset)
+            out += self.request(cmd, n, addr + offset, last=offset + n >= size)[:n]
+            offset += n
+        return out
+
+    def write_block(self, cmd, data, addr=0, final=True):
+        """Write data in chunks; `final` sets the last-packet flag on the last
+        chunk (the macro index is written without it, the bodies follow)."""
+        data = list(data)
+        offset = 0
+        while True:
+            chunk = data[offset:offset + CHUNK_SIZE]
+            last = final and offset + len(chunk) >= len(data)
+            self.request(cmd, len(chunk), addr + offset, chunk, last=last)
+            offset += len(chunk)
+            if offset >= len(data):
+                return
+
+    def send_raw(self, payload):
+        """Send a packet without waiting for an answer."""
+        self.t.drain()
+        self.t.write(_packet(payload))
+
+
+@contextlib.contextmanager
+def open_session():
+    """Open the first vendor interface that answers, run the init handshake
+    and yield a Session. Raises KeyboardError when nothing answers."""
+    with IO_LOCK:
+        paths = find_interfaces()
+        if not paths:
+            raise KeyboardError("keyboard / receiver not found")
+        last_error = None
+        for path in paths:
+            try:
+                t = _Transport(path)
+            except KeyboardError as e:
+                last_error = e
+                continue
+            try:
+                session = Session(t)
+                for pkt in INIT_PACKETS:
+                    session.request(pkt[1])
+            except KeyboardError as e:
+                last_error = e
+                t.close()
+                continue
+            try:
+                yield session
+            finally:
+                t.close()
+            return
+        raise KeyboardError(f"no vendor interface answered: {last_error}")
 
 
 def read_bluetooth_battery(patterns=BLUETOOTH_NAME_PATTERNS):

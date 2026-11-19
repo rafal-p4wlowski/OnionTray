@@ -6,6 +6,8 @@ from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import app_settings
+import i18n
+from i18n import tr
 from ui_components import DARK_MENU_STYLE, create_tray_icon, taskbar_is_light
 from version import __version__
 from worker import INITIAL_STATE, KeyboardWorker
@@ -38,13 +40,15 @@ class KeyboardApp(QObject):
         self.settings = settings
         self.state = dict(INITIAL_STATE)
         self._low_warned = False
+        self.panel = None            # KeyboardPanel, created on first use
+        i18n.set_language(settings.language)
 
         self.worker = KeyboardWorker(protocol, settings.poll_interval_s, settings.bluetooth)
         self.worker.state_changed.connect(self.sync_state)
 
         self.tray = QSystemTrayIcon(self)
         self._light_taskbar = taskbar_is_light()
-        self.tray.setToolTip("Looking for keyboard...")
+        self.tray.setToolTip(tr("Looking for keyboard..."))
         self.tray.activated.connect(self.on_tray_activated)
         self.menu = self._build_menu()
         self.tray.setContextMenu(self.menu)
@@ -83,7 +87,15 @@ class KeyboardApp(QObject):
         self.last_seen_info = self._info_action(menu)
         menu.addSeparator()
 
-        refresh_act = QAction("Refresh now", menu)
+        panel_act = QAction(tr("Keyboard panel..."), menu)
+        panel_act.triggered.connect(self.show_panel)
+        font = panel_act.font()
+        font.setBold(True)
+        panel_act.setFont(font)
+        menu.addAction(panel_act)
+        menu.setDefaultAction(panel_act)
+
+        refresh_act = QAction(tr("Refresh now"), menu)
         refresh_act.triggered.connect(self.worker.refresh_now)
         menu.addAction(refresh_act)
         menu.addSeparator()
@@ -91,31 +103,35 @@ class KeyboardApp(QObject):
         self._build_settings_menu(menu)
         menu.addSeparator()
 
-        quit_act = QAction("Quit", menu)
+        quit_act = QAction(tr("Quit"), menu)
         quit_act.triggered.connect(self.on_quit)
         menu.addAction(quit_act)
         return menu
 
     def _build_settings_menu(self, parent):
-        sub = parent.addMenu("Settings")
+        sub = parent.addMenu(tr("Settings"))
         sub.setStyleSheet(DARK_MENU_STYLE)
 
-        self.autostart_act = self._toggle_action(sub, "Start with Windows", self.on_autostart_toggled)
+        self.autostart_act = self._toggle_action(sub, tr("Start with Windows"), self.on_autostart_toggled)
         self.autostart_act.setChecked(app_settings.is_autostart_enabled())
 
-        self.bluetooth_act = self._toggle_action(sub, "Check Bluetooth connection", self.on_bluetooth_toggled)
+        self.bluetooth_act = self._toggle_action(sub, tr("Check Bluetooth connection"), self.on_bluetooth_toggled)
         self.bluetooth_act.setChecked(self.settings.bluetooth)
 
         _, self.poll_group = self._choice_menu(
-            sub, "Battery refresh", app_settings.POLL_OPTIONS, self.on_poll_interval)
+            sub, tr("Battery refresh"), app_settings.POLL_OPTIONS, self.on_poll_interval)
         self._check_choice(self.poll_group, self.settings.poll_interval_s)
 
         _, self.low_group = self._choice_menu(
-            sub, "Low battery warning", app_settings.LOW_BATTERY_OPTIONS, self.on_low_battery)
+            sub, tr("Low battery warning"), app_settings.LOW_BATTERY_OPTIONS, self.on_low_battery)
         self._check_choice(self.low_group, self.settings.low_battery)
 
+        languages = [(code, tr(label) if code == i18n.AUTO else label) for code, label in i18n.LANGUAGES]
+        _, self.language_group = self._choice_menu(sub, tr("Language"), languages, self.on_language)
+        self._check_choice(self.language_group, self.settings.language)
+
         sub.addSeparator()
-        self._info_action(sub, f"Version {__version__}")
+        self._info_action(sub, tr("Version {}").format(__version__))
 
     def _choice_menu(self, parent, title, options, handler):
         sub = parent.addMenu(title)
@@ -123,7 +139,7 @@ class KeyboardApp(QObject):
         group = QActionGroup(sub)
         group.setExclusive(True)
         for value, label in options:
-            act = QAction(label, group)
+            act = QAction(tr(label), group)
             act.setCheckable(True)
             act.setData(value)
             sub.addAction(act)
@@ -143,8 +159,49 @@ class KeyboardApp(QObject):
 
     # --- handlers ---
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.worker.refresh_now()
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.show_panel()
+
+    def _new_panel(self):
+        from panel import KeyboardPanel     # loaded on first use, keeps the start light
+        return KeyboardPanel(self)
+
+    def show_panel(self):
+        if self.panel is None:
+            self.panel = self._new_panel()
+        self.worker.refresh_now()
+        self.panel.show_panel()
+
+    def on_language(self, code):
+        """Switch the UI language: rebuild the menu and the panel in place."""
+        self.settings.language = code
+        i18n.set_language(code)
+        old_menu = self.menu
+        self.menu = self._build_menu()
+        self.tray.setContextMenu(self.menu)
+        old_menu.deleteLater()
+        self.sync_state(self.state)
+        if self.panel is not None:
+            old, visible = self.panel, self.panel.isVisible()
+            self.panel = self._new_panel()
+            self.panel.adopt(old)
+            old.shutdown()
+            old.hide()
+            old.deleteLater()
+            if visible:
+                self.panel.show_panel()
+
+    def sync_menu_settings(self):
+        """Tray menu checks after a setting changed in the panel."""
+        self.autostart_act.setChecked(app_settings.is_autostart_enabled())
+        self.bluetooth_act.setChecked(self.settings.bluetooth)
+        self._check_choice(self.poll_group, self.settings.poll_interval_s)
+        self._check_choice(self.low_group, self.settings.low_battery)
+        self._check_choice(self.language_group, self.settings.language)
+
+    def _sync_panel_settings(self):
+        if self.panel is not None:
+            self.panel.sync_app_settings()
 
     def on_autostart_toggled(self, checked):
         try:
@@ -152,24 +209,31 @@ class KeyboardApp(QObject):
         except OSError as e:
             log.error("Cannot change autostart: %s", e)
         self.autostart_act.setChecked(app_settings.is_autostart_enabled())
+        self._sync_panel_settings()
 
     def on_bluetooth_toggled(self, checked):
         self.settings.bluetooth = checked
         self.worker.bluetooth = checked
         self.worker.refresh_now()
+        self._sync_panel_settings()
 
     def on_poll_interval(self, seconds):
         self.settings.poll_interval_s = seconds
         self.worker.poll_interval_s = seconds
         self.worker.refresh_now()  # restart the wait with the new interval
+        self._sync_panel_settings()
 
     def on_low_battery(self, level):
         self.settings.low_battery = level
         self._low_warned = False
         self._update_icon()  # the arc turns amber/red relative to the threshold
         self._check_low_battery()
+        self._sync_panel_settings()
 
     def on_quit(self):
+        if self.panel is not None:
+            self.panel.shutdown()
+            self.panel.close()
         self.worker.stop()
         if not self.worker.wait(5000):
             log.warning("Worker did not stop in time")
@@ -180,12 +244,12 @@ class KeyboardApp(QObject):
     def _status_text(self):
         state = self.state
         if state["awake"]:
-            return f"Keyboard connected ({state['mode']})"
+            return tr("Keyboard connected ({})").format(tr(state["mode"]))
         if state["battery"] is not None:
-            return "Keyboard asleep / not responding"
+            return tr("Keyboard asleep / not responding")
         if state["receiver"]:
-            return "Keyboard off / out of range"
-        return "Keyboard not found"
+            return tr("Keyboard off / out of range")
+        return tr("Keyboard not found")
 
     def sync_state(self, state):
         self.state = state
@@ -193,14 +257,16 @@ class KeyboardApp(QObject):
         charging = charging_state(state)
 
         self.connection_info.setText(self._status_text())
-        self.battery_info.setText(f"Battery level: {bat}%" if bat is not None else "Battery level: ---")
-        self.charging_info.setText(f"Charging status: {charging or '---'}")
-        self.last_seen_info.setText(f"Last reading: {format_last_seen(state['last_seen'])}")
+        self.battery_info.setText(tr("Battery level: {}").format(f"{bat}%" if bat is not None else "---"))
+        self.charging_info.setText(tr("Charging status: {}").format(tr(charging) if charging else "---"))
+        self.last_seen_info.setText(tr("Last reading: {}").format(format_last_seen(state["last_seen"])))
         self.last_seen_info.setVisible(bat is not None and not state["awake"])
 
         self._update_icon()
         self._check_low_battery()
         self._refresh_tooltip(charging)
+        if self.panel is not None:
+            self.panel.update_battery(state)
 
     def _update_icon(self):
         state = self.state
@@ -223,7 +289,7 @@ class KeyboardApp(QObject):
         elif bat <= threshold and not self._low_warned:
             self._low_warned = True
             log.info("Low battery warning at %s%%", bat)
-            self.tray.showMessage("Keyboard battery low", f"Battery level: {bat}%. Connect the USB cable.",
+            self.tray.showMessage(tr("Keyboard battery low"), tr("Battery level: {}%. Connect the USB cable.").format(bat),
                                   QSystemTrayIcon.MessageIcon.Warning, 10_000)
 
     def _refresh_tooltip(self, charging):
@@ -232,9 +298,9 @@ class KeyboardApp(QObject):
         if bat is None:
             self.tray.setToolTip(self.connection_info.text())
             return
-        lines = [f"Keyboard battery: {bat}%", self.connection_info.text()]
+        lines = [tr("Keyboard battery: {}%").format(bat), self.connection_info.text()]
         if not state["awake"]:
-            lines.append(f"Last reading: {format_last_seen(state['last_seen'])}")
+            lines.append(tr("Last reading: {}").format(format_last_seen(state["last_seen"])))
         elif charging != "Not charging":
-            lines.append(f"Charging status: {charging}")
+            lines.append(tr("Charging status: {}").format(tr(charging)))
         self.tray.setToolTip("\n".join(lines))

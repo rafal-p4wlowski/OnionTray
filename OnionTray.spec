@@ -15,6 +15,8 @@ VERSION_TUPLE = tuple((list(map(int, VERSION.split("."))) + [0, 0, 0, 0])[:4])
 EXCLUDED_MODULES = [
     "tkinter", "unittest", "pydoc", "ssl", "_ssl", "_hashlib", "PyQt6.QtNetwork", "PyQt6.QtQml", "PyQt6.QtQuick",
     "PyQt6.QtPdf", "PyQt6.QtOpenGL", "PyQt6.QtOpenGLWidgets", "PyQt6.QtSvg", "PyQt6.QtDBus",
+    "multiprocessing", "concurrent", "email", "xml", "xmlrpc", "pyexpat", "urllib", "http", "html",
+    "decimal", "_decimal", "_pydecimal", "fractions", "csv", "ftplib", "bz2", "_bz2", "lzma", "_lzma",
 ]
 # Qt files pulled in by the PyQt6 hooks that a tray app does not need.
 # opengl32sw.dll alone is ~20 MB (software OpenGL fallback).
@@ -22,6 +24,7 @@ EXCLUDED_FILES = (
     "opengl32sw", "d3dcompiler", "qt6quick", "qt6qml", "qt6pdf", "qt6network",
     "qt6opengl", "qt6svg", "qt6virtualkeyboard", "qt6dbus", "/translations/",
     "libcrypto", "libssl",  # no network access; hashlib falls back to built-ins
+    "qoffscreen", "qminimal", "qdirect2d", "/generic/", "/iconengines/",  # only the Windows platform is used
 )
 KEEP_IMAGE_FORMATS = ("qico",)  # only the .ico loader is used
 

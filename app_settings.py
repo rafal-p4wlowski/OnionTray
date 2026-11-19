@@ -64,6 +64,59 @@ class AppSettings:
     def bluetooth(self, value):
         self._s.setValue("bluetooth", bool(value))
 
+    @property
+    def language(self):
+        value = self._s.value("language", "auto", type=str)
+        return value if value in ("auto", "en", "pl") else "auto"
+
+    @language.setter
+    def language(self, value):
+        self._s.setValue("language", str(value))
+
+
+class MacroNames:
+    """Macro names live only on this computer: the keyboard stores the events,
+    not the names (the vendor web driver keeps them in the browser too)."""
+
+    GROUP = "macro_names"
+
+    def __init__(self):
+        self._s = QSettings(APP_NAME, APP_NAME)
+
+    def all(self):
+        self._s.beginGroup(self.GROUP)
+        try:
+            return {int(k): self._s.value(k, "", type=str) for k in self._s.childKeys() if k.isdigit()}
+        finally:
+            self._s.endGroup()
+
+    def set(self, macro_id, name):
+        self._s.setValue(f"{self.GROUP}/{int(macro_id)}", name)
+
+    def remove(self, macro_id):
+        self._s.remove(f"{self.GROUP}/{int(macro_id)}")
+
+
+class LedColorMemory:
+    """Last lighting colour set from this program. The keyboard does not
+    report its colour back (it always answers FD FD FD)."""
+
+    KEY = "led_color"
+
+    def __init__(self):
+        self._s = QSettings(APP_NAME, APP_NAME)
+
+    def color(self):
+        value = self._s.value(self.KEY, "", type=str)
+        try:
+            r, g, b = (int(x) for x in value.split(","))
+        except ValueError:
+            return None
+        return (r, g, b)
+
+    def set_color(self, rgb):
+        self._s.setValue(self.KEY, ",".join(str(int(c)) for c in rgb))
+
 
 def autostart_command():
     """Command line Windows should run at logon."""

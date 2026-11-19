@@ -28,7 +28,7 @@ def test_battery_is_polled(app, receiver):
     assert wait_until(lambda: app.state["battery"] == 42, timeout=4)
 
 
-def test_left_click_refreshes_immediately(app, receiver):
+def test_left_click_opens_panel_and_refreshes(app, receiver):
     app.worker.poll_interval_s = 600
     app.worker.refresh_now()       # restart the wait with the long interval
     settle(0.3)
